@@ -7,9 +7,8 @@ TAG   ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 PLATFORM ?= linux/amd64
 SEED ?= 20260101
 
-.PHONY: help setup cloud-check data test portability-audit train image image-push reproduce verify clean teardown \
+.PHONY: help setup cloud-check data test portability-audit scan-secrets train image image-push reproduce verify clean teardown \
         tune compare reload-check serve serve-image loadtest deploy smoke drift inject-drift pipeline cost cost-report swap-check llm-eval llm-gate
-
 help:
 	@grep -E "^[a-zA-Z_-]+:.*?## .*$$" $(MAKEFILE_LIST) | awk -F":.*?## " "{printf \"  %-20s %s\\n\", \$$1, \$$2}"
 
@@ -29,6 +28,12 @@ test: ## Run data contract and split property tests
 
 portability-audit: ## Fail if provider strings leak into src/
 	python scripts/portability_audit.py
+
+scan-secrets: ## Scan Git history for leaked secrets
+	docker run --rm \
+	  -v "$(CURDIR):/repo" \
+	  zricethezav/gitleaks:latest \
+	  git --no-banner --redact --verbose /repo
 
 train: ## Train locally, outside the container
 	python -m src.train --seed $(SEED) --metrics-out reports/metrics.json

@@ -1,6 +1,7 @@
 """GCP adapter. Implement upload/download/push_image for Lab 1."""
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -224,9 +225,9 @@ class GcpAdapter(CloudAdapter):
         print(f"Source artifact: {artifact_uri}")
 
         # Lab 3 custom FastAPI serving image.
-        serving_image = (
-            f"{self.cfg.container_registry}/"
-            "itcs355-lab3-serving:v2"
+        serving_image = os.environ.get(
+            "SERVING_IMAGE",
+            f"{self.cfg.container_registry}/itcs355-lab3-serving:v2",
         )
         print(f"Serving image: {serving_image}")
 
