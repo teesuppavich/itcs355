@@ -29,23 +29,6 @@ log = logging.getLogger("service")
 STATE: dict[str, Any] = {"model": None, "version": os.environ.get("MODEL_VERSION", "unknown")}
 
 
-def _load_from_gcs(uri: str):
-    """Vertex AI copies nothing into the container; AIP_STORAGE_URI points at the
-    model's artifact directory in GCS, so fetch model.joblib once at startup."""
-    import tempfile
-    from pathlib import Path
-
-    import joblib
-    from google.cloud import storage  # lazy: tests and local dev don't need it
-
-    bucket_name, _, prefix = uri.removeprefix("gs://").partition("/")
-    prefix = prefix.strip("/")
-    blob_name = f"{prefix}/model.joblib" if prefix else "model.joblib"
-    dest = Path(tempfile.mkdtemp()) / "model.joblib"
-    storage.Client().bucket(bucket_name).blob(blob_name).download_to_filename(str(dest))
-    return joblib.load(dest)
-
-
 def _load_model():
     """Load once, at startup. Never per request."""
     name = os.environ.get("MODEL_REGISTRY_NAME")
@@ -57,8 +40,12 @@ def _load_model():
         return mlflow.sklearn.load_model(f"models:/{name}/{version}")
 
     storage_uri = os.environ.get("AIP_STORAGE_URI")
-    if storage_uri and storage_uri.startswith("gs://"):
-        return _load_from_gcs(storage_uri)
+    if storage_uri:
+        import joblib
+
+        from cloudlayer.artifacts import fetch_model
+
+        return joblib.load(fetch_model(storage_uri))
 
     from pathlib import Path
 
