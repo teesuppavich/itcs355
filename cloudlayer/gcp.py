@@ -82,6 +82,12 @@ class GcpAdapter(CloudAdapter):
                 "container_spec": {
                     "image_uri": image_uri,
                     "args": cli_args,
+                    "env": [
+                        {"name": "CLOUD_PROVIDER", "value": "gcp"},
+                        {"name": "PROJECT_ID", "value": self.cfg.project_id},
+                        {"name": "REGION", "value": self.cfg.region},
+                        {"name": "BLOB_URI", "value": self.cfg.blob_uri},
+                    ],
                 },
             }],
             base_output_dir=f"{self.cfg.blob_uri}/vertex-jobs",

@@ -10,9 +10,9 @@ data is not evidence of anything.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import subprocess
-from google.cloud import storage
 from pathlib import Path
 
 import mlflow
@@ -21,6 +21,7 @@ import joblib
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import average_precision_score, roc_auc_score
 
+from cloudlayer.factory import get_adapter
 from src import config, data, seeds
 
 
@@ -58,19 +59,15 @@ def main() -> None:
     # Download dataset from the DVC remote when running in the cloud.
 
     blob_uri = args.blob_uri or cfg.blob_uri
+    adapter = (
+        get_adapter(dataclasses.replace(cfg, blob_uri=blob_uri)) if blob_uri else None
+    )
 
-    if blob_uri.startswith("gs://"):
-        client = storage.Client(project=cfg.project_id)
-
-        bucket_name, prefix = blob_uri[5:].split("/", 1)
-        blob_path = f"{prefix}/dvc/files/md5/63/ec074c360e4e75d5ac2acb431feaca"
-
-        destination = cfg.raw_path
-        destination.parent.mkdir(parents=True, exist_ok=True)
-
-        bucket = client.bucket(bucket_name)
-        blob = bucket.blob(blob_path)
-        blob.download_to_filename(str(destination))
+    if adapter:
+        adapter.download(
+            f"{blob_uri.rstrip('/')}/dvc/files/md5/63/ec074c360e4e75d5ac2acb431feaca",
+            str(cfg.raw_path),
+        )
     df = data.load_raw(cfg.raw_path)
     fingerprint = data.data_fingerprint(cfg.raw_path)
     train_df, val_df, test_df = data.split(df, seed=seed)
@@ -131,22 +128,12 @@ def main() -> None:
         )
     )
 
-        if blob_uri.startswith("gs://"):
-            bucket_name, prefix = blob_uri[5:].split("/", 1)
-
-            client = storage.Client(project=cfg.project_id)
-            bucket = client.bucket(bucket_name)
-
-            output_path = f"{prefix}/vertex-jobs/{args.run_name}/metrics.json"
-
-            bucket.blob(output_path).upload_from_filename(
-                str(args.metrics_out)
+        if adapter:
+            adapter.upload(
+                str(args.metrics_out), f"vertex-jobs/{args.run_name}/metrics.json"
             )
-
-            model_output_path = f"{prefix}/vertex-jobs/{args.run_name}/model.joblib"
-
-            bucket.blob(model_output_path).upload_from_filename(
-                str(model_path)
+            adapter.upload(
+                str(model_path), f"vertex-jobs/{args.run_name}/model.joblib"
             )
 
 if __name__ == "__main__":
