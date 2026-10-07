@@ -1,264 +1,379 @@
-# ITCS355 — Lab 4: CI/CD, Observability and Drift Detection
+# ITCS355 — Lab 4: Observability, CI/CD, and Drift Detection
 
-## 1. Objective
+## Objective
 
-Lab 4 extends the previous MLOps pipeline with automated testing, CI/CD, service observability, and data drift detection.
+The objective of Lab 4 is to build a more reliable and observable machine learning system. The lab focuses on automated testing, CI/CD, service monitoring, data drift detection, alerting, scheduled monitoring, and cost awareness.
 
-The main goal is to make the ML system safer to change and easier to monitor in production. The pipeline should prevent bad data or model changes from reaching deployment, while monitoring the deployed service for operational and data-related problems.
+The main goals are:
 
----
+- Validate the data and model before deployment.
+- Automate testing and container builds with CI.
+- Automate staging deployment with CD.
+- Monitor the prediction service using metrics.
+- Define service-level objectives (SLOs).
+- Detect changes in the input data distribution.
+- Generate a real monitoring alert when drift is detected.
+- Run drift detection automatically using a scheduled cloud job.
+- Document the results and response process.
 
-## 2. Task 1 — Automated Tests
+## Task 1 — Data and Model Validation
 
-### Unit Tests
+The project includes automated tests for the data contract, model behaviour, and prediction service.
 
-The project uses `pytest` for automated testing. Tests are separated by responsibility so that data problems, model behaviour problems, and service problems can be identified separately.
+The test suite was executed with:
 
-The test suite was executed locally with:
-
-```bash
-pytest -q tests/test_data.py tests/test_model_behaviour.py tests/test_service.py
-```
+    pytest -q tests/test_data.py tests/test_model_behaviour.py tests/test_service.py
 
 Result:
 
-```text
-22 passed, 1 warning
-```
+    22 passed, 1 warning
 
-The warning was a deprecation warning from the Starlette test client and did not cause any test failure.
+The warning was a Starlette TestClient deprecation warning and did not cause a test failure.
 
-### Data Contract Tests
+The dataset was generated using:
 
-The data contract tests are implemented in `tests/test_data.py`.
+    make data
 
-The tests check that incoming sensor data still follows the assumptions required by the ML pipeline.
+The generated dataset contained:
 
-#### 1. Schema and data types
+- 6,000 rows
+- 240 machines
+- Positive rate: 0.117
 
-`test_schema_columns_present_and_typed`
+The data contract tests validate:
 
-This checks that all expected columns are present, no unexpected columns are introduced, and each column has the expected data type.
+- Required columns and schema
+- Data types
+- Missing values
+- Plausible feature ranges
+- Binary and non-degenerate target values
+- Unique reading IDs
 
-**Production incident caught:** an upstream data producer changes a column name or data type, causing the training or prediction pipeline to read the data incorrectly.
+The model behaviour tests validate:
 
-#### 2. Required values are not null
+- Valid probability outputs
+- Low risk for healthy machines
+- Risk does not decrease as machine wear increases
+- Prediction latency remains within the required budget
+- Predictions are not nearly constant
 
-`test_no_nulls_in_required_columns`
+The service tests validate:
 
-This checks that required sensor fields do not contain missing values.
+- `/health`
+- `/ready`
+- `/predict`
+- Invalid input values
+- Unknown fields
+- Missing fields
+- Single and batch prediction equivalence
+- Maximum batch size
 
-**Production incident caught:** an upstream sensor or data pipeline stops providing one of the required measurements, which could result in invalid preprocessing or predictions.
+These tests provide a basic quality gate before deployment.
 
-#### 3. Plausible feature ranges
+## Task 2 — CI/CD
 
-`test_features_within_plausible_ranges`
+GitHub Actions was configured for continuous integration and continuous deployment.
 
-This checks that sensor values remain within predefined plausible ranges.
+### Continuous Integration
 
-**Production incident caught:** a sensor malfunction or unit conversion error produces unrealistic values that could silently enter model training or prediction.
+The CI workflow runs on pull requests and pushes to `main`.
 
-#### 4. Target values are valid
+The CI pipeline performs the following checks:
 
-`test_target_is_binary_and_not_degenerate`
+1. Secret scanning
+2. Python 3.12 environment setup
+3. Dependency installation using hash-checked requirements
+4. Ruff linting
+5. Portability audit
+6. Dataset generation
+7. Data contract tests
+8. Model behaviour tests
+9. Service tests
+10. Training image build
+11. Serving image build
+12. End-to-end integration test
 
-This checks that the target contains only `0` and `1` and that the positive class is not completely missing or dominant.
+The integration test generates the dataset, trains the model, exports the model, starts the serving container, checks readiness, sends a prediction request, verifies the response, and stops the container.
 
-**Production incident caught:** a broken labeling or upstream transformation process produces invalid labels or causes the training data to contain only one effective class.
+### Continuous Deployment
 
-#### 5. Reading identifiers are unique
+The CD workflow runs after a successful CI workflow on `main`.
 
-`test_identifier_is_unique`
+The deployment process:
 
-This checks that every `reading_id` is unique.
+1. Uses the exact commit that passed CI.
+2. Authenticates to Google Cloud using Workload Identity Federation.
+3. Builds the serving image.
+4. Pushes the image to Artifact Registry.
+5. Deploys the staging service through the cloud adapter.
+6. Runs the smoke test.
 
-**Production incident caught:** duplicated records enter the training dataset and cause some observations to be counted multiple times, potentially biasing the trained model.
+The deployment configuration uses GitHub environment variables and secrets instead of storing credentials directly in the repository.
 
-These tests provide more than the required two data contract checks and cover different failure modes that could occur in production.
+## Task 3 — Quality Gate and Failure Handling
 
-### Model Behaviour Test
+A deliberately broken data contract was introduced to verify that the CI pipeline could detect invalid changes.
 
-Model behaviour tests are implemented in `tests/test_model_behaviour.py`.
+The data contract tests failed when the invalid change was introduced, which prevented the pipeline from progressing to the later deployment stages.
 
-The tests do not depend only on an aggregate accuracy or other performance metric. They check behaviours that should remain valid when the model changes.
+This demonstrates that the data contract is being used as an actual quality gate rather than only as a local test.
 
-The tests include:
+The same experiment also supported the drift detection and alerting work in Tasks 5 and 6.
 
-* predictions must be valid probabilities between 0 and 1;
-* a known healthy machine should have a relatively low predicted risk;
-* risk should not decrease when machine wear increases;
-* prediction latency should remain within the defined budget;
-* the model should not produce nearly constant predictions.
+## Task 4 — Service Observability and SLOs
 
-For example:
+The prediction service exposes a `/metrics` endpoint for Prometheus monitoring.
 
-`test_known_healthy_machine_scores_low`
+The main metrics include:
 
-checks that a cool, lightly loaded and recently serviced machine is not incorrectly classified as high risk.
+- `http_requests_total{method,path,status_class}`
+- `request_latency_ms`
+- `model_version_info{version}`
+- `feature_rolling_mean{feature}`
 
-`test_risk_increases_with_wear`
+A rolling mean of the `temp_c` feature is also tracked using a 500-value window.
 
-checks a domain expectation that increased hours since service should not reduce the predicted risk.
+The monitoring stack consists of:
 
-### Integration Test
+- Docker Compose
+- Prometheus
+- Grafana
+- Application metrics
+- A Grafana dashboard
 
-Service integration tests are implemented in `tests/test_service.py`.
+The dashboard was tested successfully and displays request and service behaviour.
 
-The tests use the FastAPI application and verify the service behaviour through HTTP requests.
+The following SLOs were defined:
 
-The integration coverage includes:
+### Availability
 
-* `/health` returns a live status;
-* `/ready` confirms that the model is ready for prediction;
-* `/predict` returns a probability and model version;
-* invalid feature values are rejected;
-* unknown input fields are rejected;
-* missing required fields are rejected;
-* batch predictions match equivalent single predictions;
-* batch requests larger than the configured limit are rejected.
+Target:
 
-The tests were executed successfully with the result:
+    99.5% over 30 days
 
-```text
-22 passed, 1 warning
-```
-
-### Dataset Used for Testing
-
-The local test dataset was generated with:
-
-```bash
-make data
-```
-
-The command generated:
-
-```text
-rows=6000
-machines=240
-positive_rate=0.117
-```
-
-The generated file was:
-
-```text
-data/raw/sensors.csv
-```
-
----
-
-## 3. Task 2 — CI/CD
-
-### CI Pipeline
-
-*To be completed after the GitHub Actions pipeline is verified.*
-
-### CD Pipeline
-
-*To be completed after the staging deployment is verified.*
-
-### GCP Authentication
-
-*To be completed after the GitHub OIDC deployment is tested.*
-
-### Container Image
-
-*To be completed after the SHA-tagged image is successfully pushed.*
-
----
-
-## 4. Task 3 — Deliberately Broken Data Contract
-
-*To be completed.*
-
----
-
-## 5. Task 4 — Observability Dashboard
-
-### Request Rate
-
-*To be completed.*
-
-### Error Rate
-
-*To be completed.*
+If the availability SLO is violated, the response is to freeze deployments, roll back to a known-good version, and perform a postmortem.
 
 ### Latency
 
-*To be completed.*
+Target:
 
-### Feature Distribution
+    p95 latency < 200 ms over 7 days
 
-*To be completed.*
+If the latency target is violated, model or dependency changes should be stopped while the regression and service capacity are investigated.
 
-### Model Version
+### Model Freshness
 
-*To be completed.*
+Target:
 
-### SLO and Error Budget
+    Model age <= 30 days
 
-*To be completed.*
+If the model becomes too old, retraining should be considered unless the problem is caused by an upstream schema or data-quality issue.
 
----
+## Task 5 — Data Drift Detection
 
-## 6. Task 5 — Drift Detection and Alerting
+A drift detector was implemented in:
 
-### Drift Metric
+    monitoring/drift.py
 
-*To be completed.*
+The detector uses Population Stability Index (PSI) and the two-sample Kolmogorov-Smirnov statistic.
 
-### Threshold
+The PSI thresholds are:
 
-*To be completed.*
+    PSI < 0.10       stable
+    PSI < 0.25       moderate
+    PSI >= 0.25      significant
 
-### Alert Channel
+The drift detector supports:
 
-*To be completed.*
+- Reference and current datasets
+- Configurable thresholds
+- JSON output
+- Cloud metric emission
 
-### Schedule
+The baseline comparison used the same reference and current dataset.
 
-*To be completed.*
+The result was:
 
----
+    temp_c          PSI 0.00000    stable
+    vibration_mm    PSI 0.00000    stable
+    ...
 
-## 7. Task 6 — Drift Injection and Incident
+All features had PSI = 0, confirming that the unchanged data did not produce a false drift alert.
 
-### Detection
+### Drift Injection
 
-*To be completed.*
+A deliberate temperature shift was injected using:
 
-### Dashboard Evidence
+    python scripts/inject_drift.py --feature temp_c --mode shift --magnitude 6
 
-*To be completed.*
+The resulting drift detection was:
 
-### Alert Timestamp
+    feature    psi       ks       verdict
+    temp_c     0.38333   0.24567  significant
 
-*To be completed.*
+The detector produced:
 
-### Postmortem
+    ALERT 1 feature(s) above threshold 0.25: temp_c
 
-*To be completed.*
+The threshold of 0.25 was selected because the unchanged reference/current comparison produced PSI = 0 for all features, while the deliberately injected +6°C shift increased the `temp_c` PSI to 0.38333 and triggered an alert.
 
----
+This provides a clear separation between the normal baseline and the distribution shift used in the experiment.
 
-## 8. Results
+## Task 6 — Real Alerting and Scheduled Drift Monitoring
 
-*To be completed after all Lab 4 tasks are finished.*
+The drift detector emits the custom Google Cloud Monitoring metric:
 
----
+    custom.googleapis.com/itcs355/drift_psi_temp_c
 
-## 9. Conclusion
+A Google Cloud Monitoring alert policy was configured with:
 
-*To be completed after all Lab 4 tasks are finished.*
+    Threshold: PSI > 0.25
+    Alignment period: 300 seconds
+    Duration: 0 seconds
+    Auto-close: 86400 seconds
 
----
+The alert policy was:
 
-## 10. Teardown and Cost
+    ITCS355 Lab 4 - Drift Alert
 
-### Teardown
+An email notification channel was configured for the alert.
 
-*To be completed.*
+A real alert was successfully received:
 
-### Cost Report
+    [ALERT - No severity] temp_c PSI >= 0.25 on itcs355-6688097
 
-*To be completed.*
+The alert reported:
+
+    value: 0.38333
+    threshold: 0.25
+
+This confirms that the drift detector was connected to Google Cloud Monitoring and that the alert was triggered by an actual metric.
+
+### Cloud Storage
+
+The drift datasets were stored in:
+
+    gs://itcs355-6688097/itcs355/drift/reference.csv
+    gs://itcs355-6688097/itcs355/drift/current.csv
+
+### Cloud Run Job
+
+The drift detection job was deployed as:
+
+    itcs355-lab4-drift
+
+The job downloads the reference and current datasets from Cloud Storage, runs the drift detector, emits the metric, and exits with code 2 when drift is detected.
+
+Exit code 2 is intentional and represents detected drift rather than a program failure.
+
+The container image was built using the pinned Python 3.12 base image.
+
+Image:
+
+    asia-southeast1-docker.pkg.dev/itcs355-6688097/itcs355/itcs355-drift@sha256:7f25153fdf5f6085f32b6a4d21f3fb7fed1064e320c6fef7a1f933c6e862a3e6
+
+The Cloud Run Job used:
+
+    Region: asia-southeast1
+    Memory: 512Mi
+    CPU: 1
+    Timeout: 10 minutes
+    Maximum retries: 0
+
+### Cloud Scheduler
+
+A scheduler was configured as:
+
+    itcs355-lab4-drift-schedule
+
+Schedule:
+
+    */5 * * * *
+
+Timezone:
+
+    Asia/Bangkok
+
+The scheduler successfully triggered the Cloud Run Job.
+
+The scheduled execution completed successfully from the infrastructure perspective, with exit code 2 because drift was detected.
+
+The recorded Cloud Run Job execution was approximately 24 seconds. This is the job execution duration only and is not treated as the complete end-to-end alert latency.
+
+## Task 7 — Drift Response and Postmortem
+
+The drift experiment used a deliberate +6°C shift in `temp_c`.
+
+### Signal
+
+The `temp_c` PSI increased to:
+
+    0.38333
+
+This was above the configured threshold:
+
+    0.25
+
+### Cause
+
+The drift was intentionally injected by shifting the temperature distribution by +6°C.
+
+### Response
+
+Retraining was not immediately performed.
+
+The first response should be to validate the upstream data source and confirm whether the distribution change represents a real operating change or a data-quality problem.
+
+### Cost
+
+For the displayed billing period from 1–6 October 2026, the project showed:
+
+    Total billed: THB 0.00
+    Vertex AI usage: THB 12.83
+    Vertex AI savings: -THB 12.83
+    Cloud Storage: THB 0.00
+    Artifact Registry: THB 0.00
+
+The net billed amount was THB 0.00 because the Vertex AI usage was fully offset by the displayed savings.
+
+The project also showed remaining free-trial credits of THB 9,776.59.
+
+### Prevention
+
+The main prevention measures are:
+
+- Run scheduled PSI monitoring.
+- Alert when PSI exceeds the defined threshold.
+- Validate upstream data before retraining.
+- Keep the drift response process documented.
+- Monitor service and model behaviour continuously.
+
+## Teardown
+
+The generic teardown target did not remove the Lab 4 monitoring resources because these resources were not matched by the generic teardown tags.
+
+The Lab 4 Cloud Run Job was therefore deleted manually:
+
+    gcloud run jobs delete itcs355-lab4-drift --region=asia-southeast1 --quiet
+
+The Cloud Scheduler job was deleted:
+
+    gcloud scheduler jobs delete itcs355-lab4-drift-schedule --location=asia-southeast1 --quiet
+
+The Cloud Monitoring alert policy was deleted:
+
+    gcloud monitoring policies delete projects/itcs355-6688097/alertPolicies/7446149716105548409 --quiet
+
+Verification showed no remaining Lab 4 Cloud Run Jobs and no active monitoring alert policies.
+
+The shared Artifact Registry repository was intentionally not deleted because it is also used by earlier labs.
+
+## Conclusion
+
+Lab 4 implemented an end-to-end observability and reliability workflow for the machine learning system. Automated tests validate the data, model, and service before deployment, while CI/CD provides automated testing, container builds, and staging deployment.
+
+The service was instrumented with Prometheus metrics and monitored using Grafana. SLOs were defined for availability, latency, and model freshness.
+
+The drift detection experiment showed that unchanged data produced PSI = 0, while the deliberate +6°C temperature shift increased the `temp_c` PSI to 0.38333 and triggered the configured 0.25 threshold. The drift metric successfully reached Google Cloud Monitoring and generated a real email alert.
+
+Scheduled monitoring was also tested through Cloud Scheduler and Cloud Run Jobs. The complete workflow demonstrates how model quality, service health, data drift, alerting, and operational response can be connected into one reproducible MLOps process.
