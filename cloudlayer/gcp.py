@@ -243,7 +243,7 @@ class GcpAdapter(CloudAdapter):
             artifact_uri=artifact_uri,
             serving_container_image_uri=serving_image,
             serving_container_ports=[8080],
-            serving_container_predict_route="/predict",
+            serving_container_predict_route="/predict/instances",
             serving_container_health_route="/health",
             labels=self.cfg.tags(3),
             project=self.cfg.project_id,

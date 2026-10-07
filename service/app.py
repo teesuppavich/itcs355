@@ -127,3 +127,31 @@ def predict(payload: PredictRequest) -> PredictResponse:
 def predict_batch(payload: BatchRequest) -> BatchResponse:
     scores = _score([row.model_dump() for row in payload.rows])
     return BatchResponse(probabilities=scores, model_version=str(STATE["version"]))
+
+
+@app.post("/predict/instances")
+def predict_instances(body: dict) -> dict:
+    """Positional contract used by managed endpoints.
+
+    {"instances": [[f1, ..., f6]]} -> {"predictions": [p, ...]}, features in FEATURES order.
+    Each row goes through PredictRequest, so the same bounds apply as on /predict.
+    """
+    from pydantic import ValidationError
+
+    from src.data import FEATURES
+
+    instances = body.get("instances")
+    if not isinstance(instances, list) or not 1 <= len(instances) <= 100:
+        raise HTTPException(status_code=422, detail="instances must be a list of 1 to 100 rows")
+    rows = []
+    for row in instances:
+        if not isinstance(row, list) or len(row) != len(FEATURES):
+            raise HTTPException(
+                status_code=422,
+                detail=f"each instance needs {len(FEATURES)} values in this order: {FEATURES}",
+            )
+        try:
+            rows.append(PredictRequest(**dict(zip(FEATURES, row))).model_dump())
+        except ValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"predictions": _score(rows)}
