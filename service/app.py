@@ -29,12 +29,25 @@ log = logging.getLogger("service")
 STATE: dict[str, Any] = {"model": None, "version": os.environ.get("MODEL_VERSION", "unknown")}
 
 
-def _load_model():
-    """Load once, at startup. Never per request.
+def _load_from_gcs(uri: str):
+    """Vertex AI copies nothing into the container; AIP_STORAGE_URI points at the
+    model's artifact directory in GCS, so fetch model.joblib once at startup."""
+    import tempfile
+    from pathlib import Path
 
-    Loading per request is the commonest cause of a p99 that looks nothing like p50, and
-    it is the first thing to check when your latency distribution has a long tail.
-    """
+    import joblib
+    from google.cloud import storage  # lazy: tests and local dev don't need it
+
+    bucket_name, _, prefix = uri.removeprefix("gs://").partition("/")
+    prefix = prefix.strip("/")
+    blob_name = f"{prefix}/model.joblib" if prefix else "model.joblib"
+    dest = Path(tempfile.mkdtemp()) / "model.joblib"
+    storage.Client().bucket(bucket_name).blob(blob_name).download_to_filename(str(dest))
+    return joblib.load(dest)
+
+
+def _load_model():
+    """Load once, at startup. Never per request."""
     name = os.environ.get("MODEL_REGISTRY_NAME")
     version = os.environ.get("MODEL_VERSION")
     if name and version:
@@ -43,8 +56,10 @@ def _load_model():
         mlflow.set_tracking_uri(os.environ.get("MLFLOW_TRACKING_URI", "sqlite:///mlflow.db"))
         return mlflow.sklearn.load_model(f"models:/{name}/{version}")
 
-    # Fallback for local development and tests only. Submitting this is not acceptable:
-    # your deployed service must load a registered version.
+    storage_uri = os.environ.get("AIP_STORAGE_URI")
+    if storage_uri and storage_uri.startswith("gs://"):
+        return _load_from_gcs(storage_uri)
+
     from pathlib import Path
 
     import joblib
@@ -52,7 +67,8 @@ def _load_model():
     path = Path(os.environ.get("MODEL_PATH", "reports/model.joblib"))
     if not path.exists():
         raise RuntimeError(
-            "No model available. Set MODEL_REGISTRY_NAME and MODEL_VERSION, or MODEL_PATH."
+            "No model available. Set MODEL_REGISTRY_NAME and MODEL_VERSION, "
+            "AIP_STORAGE_URI, or MODEL_PATH."
         )
     return joblib.load(path)
 
