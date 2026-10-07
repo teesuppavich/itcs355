@@ -34,7 +34,6 @@ def build(seed: int) -> pd.DataFrame:
             vib = 1.4 + 0.55 * wear + 0.00035 * hours + rng.normal(0, 0.45)
             pressure = 320 - 0.7 * wear + rng.normal(0, 14)
             load = float(np.clip(100 * duty + rng.normal(0, 6), 0, 100))
-            humidity = float(np.clip(rng.normal(58, 12), 0, 100))
 
             logit = (
                 -6.1
@@ -53,7 +52,6 @@ def build(seed: int) -> pd.DataFrame:
                 "pressure_kpa": round(float(pressure), 3),
                 "hours_since_service": round(hours, 3),
                 "load_pct": round(load, 3),
-                "ambient_humidity": round(humidity, 3),
                 "failed_within_7d": int(rng.random() < p),
             })
             reading_id += 1
