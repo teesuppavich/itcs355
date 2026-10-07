@@ -394,14 +394,18 @@ Before teardown, the following evidence was collected:
 
 ## Teardown
 
-After all evidence is collected:
+After all evidence was collected:
 
     make teardown
-    make cost-report
 
-The scheduler should also be explicitly verified:
+The generic teardown target returned `[]` because the Lab 4 monitoring resources were not matched by the generic teardown tags. The remaining Lab 4 resources were then removed manually.
 
-    gcloud scheduler jobs describe itcs355-lab4-drift-schedule \
-      --location=asia-southeast1
+The following Lab 4 resources were verified as removed:
 
-The final teardown should confirm that temporary Lab 4 cloud resources are removed or disabled.
+- Cloud Run Job: `itcs355-lab4-drift`
+- Cloud Scheduler job: `itcs355-lab4-drift-schedule`
+- Monitoring alert policy: `ITCS355 Lab 4 - Drift Alert`
+
+The shared Artifact Registry repository `itcs355` was kept because it is also used by earlier labs.
+
+The repository `make cost-report` target was not used as Lab 4 cost evidence because it is a later cost-report scaffold that requires manual `--estimate`, `--actual`, `--rps`, and `--instance` inputs.
