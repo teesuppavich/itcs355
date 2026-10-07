@@ -350,6 +350,34 @@ class GcpAdapter(CloudAdapter):
             deleted.append(f"endpoint:{ep.resource_name}")
         return deleted
 
-    # emit_metric                       -> Lab 4 (Cloud Monitoring time series)
+    def emit_metric(self, name: str, value: float, unit: str = "None") -> None:
+        """Write one point to Cloud Monitoring as custom.googleapis.com/itcs355/<name>."""
+        import re
+        import time
+
+        from google.cloud import monitoring_v3
+
+        safe = re.sub(r"[^A-Za-z0-9_/]", "_", name)  # drift.psi.temp_c -> drift_psi_temp_c
+        now = time.time()
+        series = monitoring_v3.TimeSeries()
+        series.metric.type = f"custom.googleapis.com/itcs355/{safe}"
+        series.resource.type = "global"
+        series.resource.labels["project_id"] = self.cfg.project_id
+        series.points = [
+            monitoring_v3.Point(
+                {
+                    "interval": {
+                        "end_time": {
+                            "seconds": int(now),
+                            "nanos": int((now - int(now)) * 1e9),
+                        }
+                    },
+                    "value": {"double_value": float(value)},
+                }
+            )
+        ]
+        client = monitoring_v3.MetricServiceClient()
+        client.create_time_series(name=f"projects/{self.cfg.project_id}", time_series=[series])
+
     # generate                          -> Lab 5 (managed LLM endpoint; read usageMetadata for tokens)
     # teardown                          -> Lab 5 (filter resources by label)
