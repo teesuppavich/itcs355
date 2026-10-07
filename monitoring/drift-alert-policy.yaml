@@ -1,0 +1,21 @@
+displayName: "ITCS355 Lab 4 - Drift Alert"
+documentation:
+  content: |
+    The production input distribution has exceeded the configured PSI threshold.
+    Check the upstream data pipeline before retraining the model.
+  mimeType: "text/markdown"
+combiner: OR
+conditions:
+  - displayName: "temp_c PSI >= 0.25"
+    conditionThreshold:
+      filter: 'metric.type="custom.googleapis.com/itcs355/drift_psi_temp_c" AND resource.type="global"'
+      comparison: COMPARISON_GT
+      thresholdValue: 0.25
+      duration: 0s
+      aggregations:
+        - alignmentPeriod: 300s
+          perSeriesAligner: ALIGN_MEAN
+          crossSeriesReducer: REDUCE_NONE
+alertStrategy:
+  autoClose: 86400s
+enabled: true

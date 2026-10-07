@@ -16,8 +16,9 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
+from service import metrics
 from service.schemas import BatchRequest, BatchResponse, PredictRequest, PredictResponse
 
 logging.basicConfig(
@@ -65,6 +66,7 @@ async def lifespan(app: FastAPI):
     try:
         STATE["model"] = _load_model()
         log.info('"model loaded, version=%s"', STATE["version"])
+        metrics.set_version(STATE["version"])
     except Exception as exc:  # readiness stays false; liveness still passes
         STATE["model"] = None
         log.error('"model load failed: %s"', exc)
@@ -79,8 +81,14 @@ app = FastAPI(title="ITCS355 inference", version="1.0.0", lifespan=lifespan)
 async def add_request_context(request: Request, call_next):
     request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
     started = time.perf_counter()
-    response = await call_next(request)
+    try:
+        response = await call_next(request)
+    except Exception:
+        elapsed_ms = (time.perf_counter() - started) * 1000
+        metrics.record_request(request.method, request.url.path, 500, elapsed_ms)
+        raise
     latency_ms = (time.perf_counter() - started) * 1000
+    metrics.record_request(request.method, request.url.path, response.status_code, latency_ms)
     response.headers["x-request-id"] = request_id
     response.headers["x-model-version"] = str(STATE["version"])
     log.info(
@@ -109,9 +117,16 @@ def ready():
     return {"status": "ready", "model_version": STATE["version"]}
 
 
+@app.get("/metrics")
+def prometheus_metrics() -> Response:
+    body, content_type = metrics.render()
+    return Response(content=body, media_type=content_type)
+
+
 def _score(rows: list[dict]) -> list[float]:
     if STATE["model"] is None:
         raise HTTPException(status_code=503, detail="model not loaded")
+    metrics.observe_features(rows)
     import pandas as pd
 
     from src.data import FEATURES

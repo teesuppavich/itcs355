@@ -1,32 +1,34 @@
-# Lab 4 — service level objectives.
-#
-# Most students write a target and stop. The third field is where the thinking is: an SLO
-# without a stated response to exhaustion is a wish, not an objective.
-
 service: itcs355-predict
 
 objectives:
   - name: availability
-    target: 0.995              # TODO(Lab 4): your number, and defend it
+    target: 0.995
     window: 30d
-    measurement: "successful responses / total responses, excluding 4xx"
+    measurement: "successful responses / total responses on /predict routes, excluding 4xx"
     on_budget_exhausted: |
-      TODO(Lab 4): what actually happens. Freeze deploys? Page someone? Fall back to the
-      last known-good version? Accept it and revise the target? All are defensible;
-      silence is not.
+      Target is 99.5% because the service runs as a single deployment without multi-region
+      redundancy; 99.5% allows about 3.6 hours of failed requests per 30 days, enough to absorb
+      one bad deploy plus rollback, while 99.9% (about 43 minutes) would require redundancy this
+      project does not pay for.
+      When the budget is spent: freeze all deploys except the fix, roll back to the last
+      known-good model version in the registry, and write a post-mortem within two days. The
+      target is only revised after that review, never during the incident.
 
   - name: latency
-    target_p95_ms: 200         # TODO(Lab 4): must match the target you set in loadtest/k6.js
+    target_p95_ms: 200
     window: 7d
     measurement: "p95 of /predict, measured at the endpoint, not at the client"
     on_budget_exhausted: |
-      TODO(Lab 4)
+      Stop shipping model or dependency changes until p95 is back under target. Compare the
+      p95 and p99 panels against the last load test to decide between a regression in the new
+      version (roll back) and a capacity problem (raise the minimum replica count).
 
   - name: freshness
     target_max_model_age_days: 30
     window: continuous
     measurement: "days since the production model version was trained"
     on_budget_exhausted: |
-      TODO(Lab 4): this one interacts with your retraining trigger in Lab 5. Keep them
-      consistent — an SLO demanding a 30-day-old model and a 90-day retrain schedule is
-      a contradiction you should notice here rather than in production.
+      Retrain on the latest validated data and ship through the normal CI pipeline. If the
+      drift check shows a schema or null-rate change, do not retrain: keep serving the current
+      model, open an incident, and fix the data producer first. The Lab 5 retrain schedule must
+      be at most 30 days to stay consistent with this target.

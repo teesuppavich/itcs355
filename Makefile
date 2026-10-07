@@ -94,7 +94,7 @@ inject-drift: ## Shift a feature's distribution on purpose
 	python scripts/inject_drift.py --feature temp_c --mode shift --magnitude 6
 
 drift: ## Score drift against the reference window
-	python -m monitoring.drift --current data/current.csv
+	python -m monitoring.drift --current data/current.csv --emit
 
 # --- Lab 5 -------------------------------------------------------------------
 pipeline: ## Compile pipeline/pipeline.yaml for your provider

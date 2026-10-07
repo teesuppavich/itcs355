@@ -1,25 +1,199 @@
 {
-  "_comment": "Lab 4 — dashboard as code. Portable Grafana definition; import it, or translate the panels to CloudWatch / Azure Monitor / Cloud Monitoring. Committing the dashboard is better than clicking one together, and is noted favourably.",
-  "title": "ITCS355 — Prediction service",
+  "uid": "itcs355-predict",
+  "title": "ITCS355 - Prediction service",
   "refresh": "30s",
+  "schemaVersion": 39,
+  "editable": true,
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
   "panels": [
-    {"id": 1, "title": "Request rate", "type": "timeseries", "unit": "reqps",
-     "target": "sum(rate(http_requests_total[1m]))"},
-    {"id": 2, "title": "Error rate by class", "type": "timeseries", "unit": "percentunit",
-     "target": "sum by (status_class) (rate(http_requests_total{status_class=~\"4xx|5xx\"}[5m])) / sum(rate(http_requests_total[5m]))",
-     "_note": "4xx and 5xx must be split. 4xx is usually a caller problem; 5xx is yours."},
-    {"id": 3, "title": "Latency p50 / p95 / p99", "type": "timeseries", "unit": "ms",
-     "targets": [
-       "histogram_quantile(0.50, sum by (le) (rate(request_latency_ms_bucket[5m])))",
-       "histogram_quantile(0.95, sum by (le) (rate(request_latency_ms_bucket[5m])))",
-       "histogram_quantile(0.99, sum by (le) (rate(request_latency_ms_bucket[5m])))"
-     ],
-     "_note": "If p99 is far above p95 in a repeating pattern, suspect cold start or a per-request model load."},
-    {"id": 4, "title": "Feature drift (PSI, rolling)", "type": "timeseries",
-     "target": "drift_psi",
-     "_note": "TODO(Lab 4): at least one feature-distribution statistic is required. Emit it from monitoring/drift.py via adapter.emit_metric."},
-    {"id": 5, "title": "Model version in production", "type": "stat",
-     "target": "model_version_info",
-     "_note": "During a canary you should see two. If you see two when you are not deploying, something is wrong."}
+    {
+      "id": 1,
+      "title": "Request rate",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(http_requests_total[1m]))",
+          "refId": "A",
+          "legendFormat": "requests/s"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "title": "Error rate by class",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (status_class) (rate(http_requests_total{status_class=~\"4xx|5xx\"}[5m])) / scalar(sum(rate(http_requests_total[5m])))",
+          "refId": "A",
+          "legendFormat": "{{status_class}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "title": "Model version in production",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "model_version_info",
+          "refId": "A",
+          "legendFormat": "{{version}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "textMode": "name",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Latency p50 / p95 / p99",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(request_latency_ms_bucket[5m])))",
+          "refId": "A",
+          "legendFormat": "p50"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(request_latency_ms_bucket[5m])))",
+          "refId": "B",
+          "legendFormat": "p95"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(request_latency_ms_bucket[5m])))",
+          "refId": "C",
+          "legendFormat": "p99"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "title": "Rolling mean of temp_c (last 500 requests)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "feature_rolling_mean{feature=\"temp_c\"}",
+          "refId": "A",
+          "legendFormat": "temp_c mean"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    }
   ]
 }
