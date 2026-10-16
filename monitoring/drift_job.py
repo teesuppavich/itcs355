@@ -5,11 +5,12 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from urllib.parse import urlparse
 
-from google.cloud import storage
+from src import config
+from cloudlayer.factory import get_adapter
 
 
-PROJECT_ID = os.environ["PROJECT_ID"]
 BUCKET = os.environ["DRIFT_BUCKET"]
 REFERENCE_OBJECT = os.environ.get(
     "DRIFT_REFERENCE_OBJECT",
@@ -21,22 +22,17 @@ CURRENT_OBJECT = os.environ.get(
 )
 
 
-def download(bucket_name: str, object_name: str, destination: Path) -> None:
-    client = storage.Client(project=PROJECT_ID)
-    bucket = client.bucket(bucket_name)
-    blob = bucket.blob(object_name)
-    blob.download_to_filename(str(destination))
-    print(f"downloaded gs://{bucket_name}/{object_name} -> {destination}")
-
-
 def main() -> int:
+    adapter = get_adapter(config.load(strict=False))
+    scheme = urlparse(adapter.cfg.blob_uri).scheme
+
     with tempfile.TemporaryDirectory() as tmp:
         tmpdir = Path(tmp)
         reference = tmpdir / "reference.csv"
         current = tmpdir / "current.csv"
 
-        download(BUCKET, REFERENCE_OBJECT, reference)
-        download(BUCKET, CURRENT_OBJECT, current)
+        adapter.download(f"{scheme}://{BUCKET}/{REFERENCE_OBJECT}", str(reference))
+        adapter.download(f"{scheme}://{BUCKET}/{CURRENT_OBJECT}", str(current))
 
         cmd = [
             sys.executable,
