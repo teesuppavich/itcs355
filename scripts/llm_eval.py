@@ -176,6 +176,7 @@ def main() -> int:
                     help="recorded responses; omit and pass --live to call your adapter")
     ap.add_argument("--live", action="store_true",
                     help="generate responses through cloudlayer instead of a fixture")
+    ap.add_argument("--system", type=Path, default=ROOT / "evals" / "prompts" / "triage-v1.txt")
     ap.add_argument("--provider", default="gcp")
     ap.add_argument("--model", default="small")
     ap.add_argument("--out", type=Path, default=ROOT / "reports" / "llm_eval.json")
@@ -185,7 +186,7 @@ def main() -> int:
 
     golden = read_jsonl(args.golden)
     if args.live:
-        responses = generate_live(golden)
+        responses = generate_live(golden, args.system)
     else:
         responses = read_jsonl(args.responses)
 
@@ -212,7 +213,7 @@ def main() -> int:
     return 0
 
 
-def generate_live(golden: list[dict]) -> list[dict]:
+def generate_live(golden: list[dict], system_path: Path) -> list[dict]:
     """TODO(Lab 5): route each prompt through your adapter's `generate`.
 
     Record input_tokens, output_tokens and latency_ms from the provider's own usage
@@ -223,10 +224,14 @@ def generate_live(golden: list[dict]) -> list[dict]:
     from cloudlayer.factory import get_adapter
 
     adapter = get_adapter(config.load())
+    system = system_path.read_text()
     rows = []
     for case in golden:
-        result = adapter.generate(case["prompt"], {"max_output_tokens": 200})
+        result = adapter.generate(case["prompt"], {"max_output_tokens": 200, "system": system})
         rows.append({"id": case["id"], **result})
+    out = ROOT / "evals" / "fixtures" / "mine-live-latest.jsonl"
+    out.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
+    print(f"recorded {len(rows)} responses -> {out.name}")
     return rows
 
 

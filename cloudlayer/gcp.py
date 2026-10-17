@@ -379,5 +379,37 @@ class GcpAdapter(CloudAdapter):
         client = monitoring_v3.MetricServiceClient()
         client.create_time_series(name=f"projects/{self.cfg.project_id}", time_series=[series])
 
-    # generate                          -> Lab 5 (managed LLM endpoint; read usageMetadata for tokens)
+    def generate(self, prompt: str, params: dict[str, Any]) -> dict[str, Any]:
+        import time
+
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client(
+            vertexai=True,
+            project=self.cfg.project_id,
+            location=params.get("location", self.cfg.region),
+        )
+        config = types.GenerateContentConfig(
+            system_instruction=params.get("system"),
+            max_output_tokens=params.get("max_output_tokens", 200),
+            temperature=params.get("temperature", 0.0),
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
+            response_mime_type=params.get("response_mime_type", "application/json"),
+        )
+        start = time.perf_counter()
+        resp = client.models.generate_content(
+            model=params.get("model", "gemini-2.5-flash"),
+            contents=prompt,
+            config=config,
+        )
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        usage = resp.usage_metadata
+        return {
+            "response": resp.text or "",
+            "input_tokens": int(usage.prompt_token_count or 0),
+            "output_tokens": int(usage.candidates_token_count or 0),
+            "latency_ms": latency_ms,
+        }
+
     # teardown                          -> Lab 5 (filter resources by label)
