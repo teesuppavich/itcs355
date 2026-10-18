@@ -42,6 +42,8 @@ TOKEN_PRICE_TABLE: dict[str, dict[str, tuple[float, float]]] = {
     },
     "gcp": {
         "small": (8.5, 34.0),
+        # gemini-2.5-flash, Vertex AI. USD 0.30 in / 2.50 out per 1M tokens (from third-party calculators, NOT yet checked on the Google pricing page) x 33.5 THB/USD (approx, web sources, 2026-10-18; not a bank rate)
+        "gemini-2.5-flash": (10.0500, 83.7500),
         "medium": (105.0, 525.0),
         "large": (525.0, 2625.0),
     },
