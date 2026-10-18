@@ -16,16 +16,45 @@ Hints for Lab 1:
 """
 from __future__ import annotations
 
+from pathlib import Path
+from urllib.parse import urlparse
 
 from cloudlayer.base import CloudAdapter
 
 
 class AzureAdapter(CloudAdapter):
+    @staticmethod
+    def _split(uri: str) -> tuple[str, str, str]:
+        """Return (account_url, container, path) for an https:// or abfss:// blob URI."""
+        parsed = urlparse(uri)
+        if parsed.scheme == "abfss":
+            container, _, host = parsed.netloc.partition("@")
+            return "https://" + host.replace(".dfs.", ".blob."), container, parsed.path.lstrip("/")
+        if parsed.scheme == "https":
+            container, _, path = parsed.path.lstrip("/").partition("/")
+            return f"https://{parsed.netloc}", container, path
+        raise ValueError(f"Azure adapter cannot read blob URI {uri!r}: expected https:// or abfss://")
+
     def upload(self, local_path: str, key: str) -> str:
-        raise NotImplementedError("TODO Lab 1: upload_blob into BLOB_URI, return the full URI")
+        from azure.identity import DefaultAzureCredential
+        from azure.storage.blob import BlobServiceClient
+
+        account_url, container, prefix = self._split(self.cfg.blob_uri)
+        full_key = f"{prefix}/{key}" if prefix else key
+        service = BlobServiceClient(account_url, credential=DefaultAzureCredential())
+        with open(local_path, "rb") as fh:
+            service.get_blob_client(container, full_key).upload_blob(fh, overwrite=True)
+        return f"{account_url}/{container}/{full_key}"
 
     def download(self, uri: str, local_path: str) -> None:
-        raise NotImplementedError("TODO Lab 1: download_blob, creating parent directories")
+        from azure.identity import DefaultAzureCredential
+        from azure.storage.blob import BlobServiceClient
+
+        account_url, container, blob_key = self._split(uri)
+        Path(local_path).parent.mkdir(parents=True, exist_ok=True)
+        service = BlobServiceClient(account_url, credential=DefaultAzureCredential())
+        data = service.get_blob_client(container, blob_key).download_blob().readall()
+        Path(local_path).write_bytes(data)
 
     def push_image(self, local_tag: str) -> str:
         raise NotImplementedError("TODO Lab 1: az acr login, push, return registry/repo@sha256:...")
