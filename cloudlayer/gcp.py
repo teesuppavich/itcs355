@@ -17,6 +17,31 @@ class GcpAdapter(CloudAdapter):
         prefix = parsed.path.lstrip("/")
         return bucket, prefix
 
+    def _env(self, name: str):
+        import os
+
+        return os.environ.get(name) or None
+
+    def _lab(self, default: int) -> int:
+        return int(self._env("COURSE_LAB") or default)
+
+    def latest_registered_metric(self, name: str, metric_key: str):
+        from google.cloud import aiplatform
+
+        aiplatform.init(project=self.cfg.project_id, location=self.cfg.region)
+        found = aiplatform.Model.list(filter=f'display_name="{name}"')
+        if not found:
+            return None
+        registry = aiplatform.models.ModelRegistry(model=found[0].name)
+        newest = max(registry.list_versions(), key=lambda v: int(v.version_id))
+        for line in (newest.version_description or "").splitlines():
+            key, _, value = line.partition("=")
+            if key.strip() == metric_key:
+                return float(value)
+        raise LookupError(
+            f"version {newest.version_id} of {name} has no {metric_key} in its description"
+        )
+
     def upload(self, local_path: str, key: str) -> str:
         from google.cloud import storage
 
@@ -91,11 +116,12 @@ class GcpAdapter(CloudAdapter):
                 },
             }],
             base_output_dir=f"{self.cfg.blob_uri}/vertex-jobs",
-            labels=self.cfg.tags(2),
+            labels=self.cfg.tags(self._lab(2)),
         )
 
         job.submit(
-            scheduling_strategy=aiplatform.compat.types.custom_job.Scheduling.Strategy.SPOT
+            service_account=self._env("TRAIN_SERVICE_ACCOUNT"),
+            scheduling_strategy=aiplatform.compat.types.custom_job.Scheduling.Strategy.SPOT,
         )
 
         return job.resource_name
@@ -187,8 +213,15 @@ class GcpAdapter(CloudAdapter):
             staging_bucket=self.cfg.blob_uri,
         )
 
+        existing = aiplatform.Model.list(
+            filter=f'display_name="{name}"',
+            project=self.cfg.project_id,
+            location=self.cfg.region,
+        )
         model = aiplatform.Model.upload(
             display_name=name,
+            parent_model=existing[0].resource_name if existing else None,
+            version_description=lineage,
             artifact_uri=model_uri,
             serving_container_image_uri=(
                 "us-docker.pkg.dev/vertex-ai/"
@@ -196,7 +229,7 @@ class GcpAdapter(CloudAdapter):
             ),
             version_aliases=["staging"],
             description=lineage,
-            labels=self.cfg.tags(2),
+            labels=self.cfg.tags(self._lab(2)),
             project=self.cfg.project_id,
             location=self.cfg.region,
             staging_bucket=self.cfg.blob_uri,
@@ -246,7 +279,7 @@ class GcpAdapter(CloudAdapter):
             serving_container_environment_variables={"MODEL_VERSION": str(model_ref)},
             serving_container_predict_route="/predict/instances",
             serving_container_health_route="/ready",
-            labels=self.cfg.tags(3),
+            labels=self.cfg.tags(self._lab(3)),
             project=self.cfg.project_id,
             location=self.cfg.region,
             staging_bucket=self.cfg.blob_uri,
@@ -269,7 +302,7 @@ class GcpAdapter(CloudAdapter):
         else:
             ep = aiplatform.Endpoint.create(
                 display_name=endpoint,
-                labels=self.cfg.tags(3),
+                labels=self.cfg.tags(self._lab(3)),
                 project=self.cfg.project_id,
                 location=self.cfg.region,
                 sync=True,
@@ -281,6 +314,7 @@ class GcpAdapter(CloudAdapter):
             deployed_model_display_name=f"{endpoint}-model",
             traffic_percentage=100,
             machine_type=instance,
+            service_account=self._env("SERVE_SERVICE_ACCOUNT"),
             min_replica_count=1,
             max_replica_count=1,
             sync=True,

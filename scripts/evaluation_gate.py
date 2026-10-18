@@ -15,8 +15,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-# TODO(Lab 5): choose and defend these. A margin of zero means noise gets promoted;
-# too large a margin means real improvements never ship.
+from cloudlayer.factory import get_adapter
+from src import config
+
 MIN_ABSOLUTE = 0.80
 MIN_IMPROVEMENT = 0.02
 
@@ -39,16 +40,24 @@ def main() -> int:
 
     incumbent = args.incumbent
     if incumbent is None:
-        # TODO(Lab 5): read the production version's metric from the registry instead of
-        # assuming there is no incumbent. A first run legitimately has none.
-        print("no incumbent supplied — treating as first registration")
-        print("GATE PASS")
-        return 0
+        try:
+            key = {"test_roc_auc": "metric_test", "val_roc_auc": "metric_val"}[args.metric]
+            cfg = config.load(strict=False)
+            incumbent = get_adapter(cfg).latest_registered_metric(cfg.model_registry_name, key)
+        except Exception as exc:
+            print(f"GATE ERROR  cannot read the incumbent from the registry: {exc}")
+            return 2
+        if incumbent is None:
+            print("no registered model yet; treating as first registration")
+            print("GATE PASS")
+            return 0
+        print(f"incumbent from registry = {incumbent:.4f}")
 
     delta = candidate - incumbent
     print(f"incumbent {incumbent:.4f}  delta {delta:+.4f}  required {MIN_IMPROVEMENT:+.4f}")
     if delta < MIN_IMPROVEMENT:
-        print("GATE FAIL  improvement within noise; not registering")
+        reason = "candidate worse than incumbent" if delta < 0 else "improvement within noise"
+        print(f"GATE FAIL  {reason}; not registering")
         return 1
 
     print("GATE PASS")
