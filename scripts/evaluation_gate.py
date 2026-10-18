@@ -17,8 +17,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 # TODO(Lab 5): choose and defend these. A margin of zero means noise gets promoted;
 # too large a margin means real improvements never ship.
-MIN_ABSOLUTE = 0.75
-MIN_IMPROVEMENT = 0.002
+MIN_ABSOLUTE = 0.80
+MIN_IMPROVEMENT = 0.02
 
 
 def main() -> int:
