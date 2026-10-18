@@ -4,7 +4,34 @@
 ### Task 1 — Managed pipeline
 (not started)
 ### Task 2 — Least privilege
-(identity table + which permission removed + what broke)
+Two service accounts were created and tested by impersonation. Predictions were written before each test.
+
+| Test | Prediction | Result |
+| --- | --- | --- |
+| train writes a new object | pass | pass |
+| train reads | pass | pass |
+| train overwrites an existing object | fail | fail, missing `storage.objects.delete` |
+| train deletes | fail | fail, missing `storage.objects.delete` |
+| serve reads | pass | pass |
+| serve writes | fail | fail, missing `storage.objects.create` |
+
+`objectCreator` can create new objects but cannot overwrite an existing name, so the training step must write the model under a run-specific name.
+
+**Removal experiment.** I removed `roles/logging.logWriter` from `itcs355-train`, predicting that log writes would fail. The prediction was only partly right. Sixty seconds after the removal a log write still succeeded; on every later attempt it failed with `logging.logEntries.create` denied. The project has no folder or organization above it and the identity holds no other logging role, so the cause is propagation delay. Restoring the role showed the same delay: the first three attempts failed and the fourth succeeded about a minute after the grant. A revoke should not be assumed effective immediately. I did not run a real training job without the role, so I have not confirmed whether it would fail loudly or finish with no logs.
+
+**Identity per step.** `pipeline/pipeline.yaml` has no per-step identity and `compile_gcp` is not implemented, so no pipeline step runs on GCP today. The existing submission in `cloudlayer/gcp.py` passes no `service_account`, so as far as I can tell it runs as the default compute account, which holds `roles/editor` on the project. The table is the intended design, not current behaviour.
+
+| Step | Identity | Needs |
+| --- | --- | --- |
+| ingest | itcs355-train | create new objects |
+| validate | itcs355-train | read data |
+| train | itcs355-train | read data, create model under a run-specific name, write logs and metrics |
+| evaluate | itcs355-train | read metrics |
+| register | github-deploy | `aiplatform.user` |
+| deploy_staging | github-deploy, acting as itcs355-serve | `aiplatform.user`, `iam.serviceAccountUser` on serve |
+
+`github-deploy` holds `roles/iam.serviceAccountUser` on both `itcs355-train` and `itcs355-serve`. CI authenticates through workload identity federation, so no long-lived key is stored. The train identity has no `aiplatform.user`, so a compromised training step cannot register a model and the `gate_decision` condition stays meaningful.
+
 ### Task 3 — Scheduled retraining
 (three-strategy table for this system + chosen strategy + worst case)
 ### Task 4 — Portability test
@@ -41,33 +68,3 @@ Rates: gemini-2.5-flash on Vertex AI, USD 0.30 input / 2.50 output per 1M tokens
 3. **Prompt cache.** Break-even hit rate from `cache_breakeven_hit_rate` is 21.74%, using the course's constants (cache read at 10% of input, write at 1.25x). Measured hit rate is 0%: Google's documentation gives a 1,024-token or 2,048-token minimum for caching (two pages disagree) and this prompt is about 330 tokens, so caching cannot apply. Google's pricing page lists cached input at USD 0.03 per 1M (10% of the input rate, matching the read factor) and lists no write surcharge, only storage per token-hour for explicit caches, so the 1.25x write factor does not apply to Gemini and the 21.74% figure does not transfer. Decision: no cache.
 
 **Defence of the bill.** The LLM triage step costs about 6.4 THB per 1,000 requests. I tried to cut that by capping output length. On this workload answers are short (at most 53 tokens), so a cap of 60 saves nothing on average, and a tighter cap of 40 saves only 2% while cutting answers off mid-JSON so that 3 of 11 test cases fail, which makes the system worse, not cheaper. I set the cap to 60 in the eval path (`scripts/llm_eval.py`; the default in `cloudlayer/gcp.py` is still 200) because it costs nothing in correctness and limits the worst case for a single runaway answer to roughly a third of what the old setting allowed. I did not enable caching because the prompt is far below the minimum size. What I gave up: nothing measurable. What this figure does not cover: real traffic, which may have longer inputs than my 11 test cases, and the exchange rate, which is approximate (about 1%). Thinking is disabled (`thinking_budget=0` in `cloudlayer/gcp.py`), so `candidates_token_count` is the full billed output; enabling thinking would add reasoning tokens to output and raise the bill.
-
-## Task 2: Least-privilege identities
-
-Two service accounts were created and tested by impersonation. Predictions were written before each test.
-
-| Test | Prediction | Result |
-| --- | --- | --- |
-| train writes a new object | pass | pass |
-| train reads | pass | pass |
-| train overwrites an existing object | fail | fail, missing `storage.objects.delete` |
-| train deletes | fail | fail, missing `storage.objects.delete` |
-| serve reads | pass | pass |
-| serve writes | fail | fail, missing `storage.objects.create` |
-
-`objectCreator` can create new objects but cannot overwrite an existing name, so the training step must write the model under a run-specific name.
-
-**Removal experiment.** I removed `roles/logging.logWriter` from `itcs355-train`, predicting that log writes would fail. The prediction was only partly right. Sixty seconds after the removal a log write still succeeded; on every later attempt it failed with `logging.logEntries.create` denied. The project has no folder or organization above it and the identity holds no other logging role, so the cause is propagation delay. Restoring the role showed the same delay: the first three attempts failed and the fourth succeeded about a minute after the grant. A revoke should not be assumed effective immediately. I did not run a real training job without the role, so I have not confirmed whether it would fail loudly or finish with no logs.
-
-**Identity per step.** `pipeline/pipeline.yaml` has no per-step identity and `compile_gcp` is not implemented, so no pipeline step runs on GCP today. The existing submission in `cloudlayer/gcp.py` passes no `service_account`, so as far as I can tell it runs as the default compute account, which holds `roles/editor` on the project. The table is the intended design, not current behaviour.
-
-| Step | Identity | Needs |
-| --- | --- | --- |
-| ingest | itcs355-train | create new objects |
-| validate | itcs355-train | read data |
-| train | itcs355-train | read data, create model under a run-specific name, write logs and metrics |
-| evaluate | itcs355-train | read metrics |
-| register | github-deploy | `aiplatform.user` |
-| deploy_staging | github-deploy, acting as itcs355-serve | `aiplatform.user`, `iam.serviceAccountUser` on serve |
-
-`github-deploy` holds `roles/iam.serviceAccountUser` on both `itcs355-train` and `itcs355-serve`. CI authenticates through workload identity federation, so no long-lived key is stored. The train identity has no `aiplatform.user`, so a compromised training step cannot register a model and the `gate_decision` condition stays meaningful.
