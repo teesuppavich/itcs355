@@ -37,6 +37,7 @@ COPY --chown=runner:runner .dvc/ ./.dvc/
 COPY --chown=runner:runner data/raw.dvc ./data/raw.dvc
 COPY --chown=runner:runner cloudlayer/ ./cloudlayer/
 COPY --chown=runner:runner scripts/ ./scripts/
+COPY --chown=runner:runner tests/ ./tests/
 RUN chown runner:runner /app
 USER runner
 
