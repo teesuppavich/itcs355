@@ -227,7 +227,7 @@ def generate_live(golden: list[dict], system_path: Path) -> list[dict]:
     system = system_path.read_text()
     rows = []
     for case in golden:
-        result = adapter.generate(case["prompt"], {"max_output_tokens": 200, "system": system})
+        result = adapter.generate(case["prompt"], {"max_output_tokens": 60, "system": system})
         rows.append({"id": case["id"], **result})
     out = ROOT / "evals" / "fixtures" / "mine-live-latest.jsonl"
     out.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
