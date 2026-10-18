@@ -2,7 +2,9 @@
 
 ## Part A — Defending the bill
 ### Task 1 — Managed pipeline
-(not started)
+(pipeline not started)
+
+**Gate thresholds.** Retraining one configuration (depth 8, 200 trees) on 12 seeds, four from the Lab 2 MLflow runs and eight run locally with `python -m src.train --seed N`, gave test ROC AUC mean 0.8482, SD 0.0174, range 0.0469. The seed controls both the data split and the model, so this noise covers both. The difference between two independent runs has SD about 0.025. Under a normal approximation, the scaffold margin of 0.002 would promote an equally good model about 47% of the time; I set `MIN_IMPROVEMENT = 0.02`, which promotes an equal model about 21% of the time and a model that is truly 0.02 worse about 5% of the time. A margin of 0.04 would cut these to 5% and under 1% but would block almost every realistic improvement. `MIN_ABSOLUTE = 0.80` sits about 2.8 SD below the mean and only catches a broken training run. The SD comes from 12 runs and is uncertain by roughly 20%. I did not test a paired comparison on a fixed test set, which would need a smaller margin.
 ### Task 2 — Least privilege
 Two service accounts were created and tested by impersonation. Predictions were written before each test.
 
