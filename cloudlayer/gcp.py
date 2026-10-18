@@ -243,6 +243,15 @@ class GcpAdapter(CloudAdapter):
         return str(model.version_id)
     # deploy / invoke                   -> Lab 3 (Vertex Endpoint)
 
+    def model_ref(self, name: str, version: str) -> str:
+        from google.cloud import aiplatform
+
+        aiplatform.init(project=self.cfg.project_id, location=self.cfg.region)
+        found = aiplatform.Model.list(filter=f'display_name="{name}"')
+        if len(found) != 1:
+            raise LookupError(f"expected exactly one model named {name}, found {len(found)}")
+        return f"{found[0].name}@{version}"
+
     def deploy(self, model_ref: str, endpoint: str, instance: str) -> str:
         """Create a Lab 3 serving model and deploy it to a Vertex endpoint."""
         from google.cloud import aiplatform
