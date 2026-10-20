@@ -4,17 +4,19 @@
 
 | Item | Estimate (reports/lab5-estimate.md) | Actual |
 |---|---:|---:|
-| Pipeline run fees | 8.0 THB | TODO (from bill) |
-| Step compute | 25.6 THB | TODO |
-| Staging endpoint | 25.6 THB (4 h) | TODO (see below) |
-| Storage, logging, registry | 5.0 THB | TODO |
-| Total | 64.2 THB | TODO |
+| Pipeline run fees | 8.0 THB | 2.02 THB (2 runs) |
+| Step compute | 25.6 THB | 4.29 THB |
+| Staging endpoint | 25.6 THB (4 h) | 341.61 THB (53.49 h) |
+| Storage, logging, registry, other | 5.0 THB | 2.42 THB (includes Gemini 0.74) |
+| Total | 64.2 THB | 350.34 THB |
 
 Billing source: Cloud Billing > Reports, label `course=itcs355`, from 16 Oct 2026,
-Credits not removed. Fetched on: TODO (date). Currency: TODO. FX rate used: TODO.
+Credits not removed (list cost shown). Fetched on: 20 Oct 2026. Currency: THB, no FX needed.
+Project filter: one project, no label filter. Net charge after free-trial credit: 0.00 THB.
 
 Endpoint: deployed 16 Oct 09:09 UTC, undeployed 18 Oct 15:35 UTC, about 54.4 h.
-Formula estimate at 6.4 THB/h, 1 replica: 348.35 THB. Billed: TODO.
+Formula estimate at 6.4 THB/h, 1 replica, 54.43 h: 348.35 THB. Billed: 341.61 THB
+(core 222.42 + RAM 119.19). Billed hours: 213.96 core-h / 4 = 53.49 h and 855.85 GiB-h / 16 = 53.49 h.
 The estimate assumed 4 h. The endpoint was left up about 54 h. Cause: TODO (your own words).
 
 ## 2. Cost per 1,000 predictions (e2-standard-4, 6.4 THB/h)
@@ -35,8 +37,10 @@ to 3.9 s, so the service was saturated at 1 VU. Real capacity on GCP is unknown.
 ## 3. Optimisation 6: shut down idle compute
 
 Before: endpoint up about 54.4 h with no traffic after testing.
-After: billed endpoint cost on 19 and 20 Oct = TODO (expected 0). Fetched on: TODO.
+After: billed endpoint cost on 19 and 20 Oct = 0.43 THB (0.27 core-h, 1.06 GiB-h, about 0.07 h of the instance)
+versus 341.61 THB before. Fetched on 20 Oct 2026; billing data can lag.
 
 ## 4. Rate verification
 
-`e2-standard-4: 6.4` in src/costs.py compared with billed rate (usage hours and cost): TODO.
+`e2-standard-4: 6.4` in src/costs.py vs billed 341.61 / 53.49 h = 6.386 THB/h (0.2% lower).\
+Checked against the bill on 20 Oct 2026.
