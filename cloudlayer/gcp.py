@@ -384,7 +384,8 @@ class GcpAdapter(CloudAdapter):
         aiplatform.init(project=self.cfg.project_id, location=self.cfg.region)
         deleted=[]
         for ep in aiplatform.Endpoint.list(project=self.cfg.project_id, location=self.cfg.region):
-            if ep.display_name != "itcs355-lab3-endpoint":
+            labels = dict(ep.labels or {})
+            if any(labels.get(k) != v for k, v in tags.items()):
                 continue
             for dm in list(ep.gca_resource.deployed_models):
                 ep.undeploy(deployed_model_id=str(dm.id), sync=True)
