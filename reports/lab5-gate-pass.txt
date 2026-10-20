@@ -1,0 +1,3 @@
+candidate test_roc_auc = 0.8482
+incumbent 0.8000  delta +0.0482  required +0.0200
+GATE PASS
