@@ -44,3 +44,14 @@ versus 341.61 THB before. Fetched on 20 Oct 2026; billing data can lag.
 
 `e2-standard-4: 6.4` in src/costs.py vs billed 341.61 / 53.49 h = 6.386 THB/h (0.2% lower).\
 Checked against the bill on 20 Oct 2026.
+
+## 5. LLM step (Task 9)
+
+Full working is in README_LAB5.md, Task 9. Summary:
+
+- Cost per 1,000 requests: 6.355 THB (gemini-2.5-flash on Vertex AI, 330.82 input and 36.18 output tokens on average, read from the provider's usage fields; USD 0.30 / 2.50 per 1M tokens at about 33.5 THB/USD).
+- `python scripts/llm_eval.py --model gemini-2.5-flash ...` prints 6.3416 because it rounds the averages to whole tokens. Without `--model` it prints the course's `small` table price, which is not Gemini's.
+- Billing cross-check, 16 to 20 Oct 2026 (list cost before credits): Gemini 2.5 Flash input 37,169 tokens and output 4,459 tokens, 0.37 THB each. Rates computed from the table give 0.373 and 0.373, so the rate and FX assumption match the bill.
+- Capping max_output_tokens: cap 60 saves 0.0 and passes 11/11; cap 40 saves 0.107 THB per 1k (about 1.7%) but fails 3 cases, so it is not an optimisation.
+- Prompt cache: not used. The prompt is about 330 tokens, below Google's caching minimum.
+
