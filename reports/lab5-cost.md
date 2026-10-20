@@ -17,7 +17,7 @@ Project filter: one project, no label filter. Net charge after free-trial credit
 Endpoint: deployed 16 Oct 09:09 UTC, undeployed 18 Oct 15:35 UTC, about 54.4 h.
 Formula estimate at 6.4 THB/h, 1 replica, 54.43 h: 348.35 THB. Billed: 341.61 THB
 (core 222.42 + RAM 119.19). Billed hours: 213.96 core-h / 4 = 53.49 h and 855.85 GiB-h / 16 = 53.49 h.
-The estimate assumed 4 h. The endpoint was left up about 54 h. Cause: NEW CAUSE
+The estimate assumed 4 h. The endpoint was left up about 54 h. Cause: I left the endpoint deployed after testing and had no reminder or automatic teardown, so it ran until I undeployed it manually on 18 Oct at about 15:35 UTC. Fix: add an undeploy step at the end of the test workflow and set a budget alert.
 
 ## 2. Cost per 1,000 predictions (e2-standard-4, 6.4 THB/h)
 
