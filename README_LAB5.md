@@ -23,18 +23,15 @@ Two service accounts were created and tested by impersonation. Predictions were 
 
 **Second removal experiment.** I removed `roles/artifactregistry.reader` from `itcs355-serve`, predicting that deploy would still succeed because the Vertex service agent, not the serve identity, pulls the serving image. After a 60 s wait I redeployed the test model. The audit log shows `DeployModel` at 02:27 UTC, a second `DeployModel` entry at 02:46:14 and `UndeployModel` at 02:46:19; my script undeploys only when a deployed model exists, so the deploy took effect. The prediction held. Caveat from the first experiment: revokes take about a minute to apply, and the deploy began roughly 100 s after the removal, so it was probably past that window but I did not verify it. I have not confirmed that the service agent is the one pulling the image. The role was restored afterwards and I have not removed it permanently.
 
-**Identity per step.** `pipeline/pipeline.yaml` has no per-step identity and `compile_gcp` is not implemented, so no pipeline step runs on GCP today. The existing submission in `cloudlayer/gcp.py` passes no `service_account`, so as far as I can tell it runs as the default compute account, which holds `roles/editor` on the project. The table is the intended design, not current behaviour.
+**Identity per step (verified from the Vertex API, run 20261019191021).** My prediction was that ingest, validate and train would run as `itcs355-train`; it was wrong. Every pipeline step runs as `github-deploy`, because `job.submit(service_account=PIPELINE_SERVICE_ACCOUNT)` sets one identity for the whole run and `pipeline.yaml` has no per-step identity.
 
-| Step | Identity | Needs |
+| Layer | Runs as | Evidence |
 | --- | --- | --- |
-| ingest | itcs355-train | create new objects |
-| validate | itcs355-train | read data |
-| train | itcs355-train | read data, create model under a run-specific name, write logs and metrics |
-| evaluate | itcs355-train | read metrics |
-| register | github-deploy | `aiplatform.user` |
-| deploy_staging | github-deploy, acting as itcs355-serve | `aiplatform.user`, `iam.serviceAccountUser` on serve |
+| ingest, validate, gate, register, deploy steps, and the train-op wrapper | `github-deploy` | `jobSpec.serviceAccount` of each step's custom job |
+| training job submitted by train-op | `itcs355-train` | custom job `2921532962006630400` from the first run; not checked for the second run |
+| staging endpoint created by deploy | `itcs355-serve` | `service_account=` argument in `cloudlayer/gcp.py`; not read back from the endpoint |
 
-`github-deploy` holds `roles/iam.serviceAccountUser` on both `itcs355-train` and `itcs355-serve`. CI authenticates through workload identity federation, so no long-lived key is stored. The train identity has no `aiplatform.user`, so a compromised training step cannot register a model and the `gate_decision` condition stays meaningful.
+Consequences. Ingest and validate run with `storage.objectAdmin` on the whole project, far more than they need; the fix is a per-step `service_account`. Gate and register run as the same identity, which also holds `aiplatform.user`, so the claim that a compromised step cannot register a model holds only for the training job itself, not for the pipeline steps.
 
 ### Task 3 — Scheduled retraining
 (three-strategy table for this system + chosen strategy + worst case)
