@@ -6,7 +6,7 @@
 # The training machine type is fixed inside the adapter (submit_training).
 
 name: itcs355-training-pipeline
-schedule: "0 2 * * 0"          # TODO(Lab 5): justify this in your README, or change it
+schedule: "0 2 1 * *"        # monthly, see README Task 3
 
 steps:
   - name: ingest

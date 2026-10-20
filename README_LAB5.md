@@ -34,7 +34,17 @@ Two service accounts were created and tested by impersonation. Predictions were 
 Consequences. Ingest and validate run with `storage.objectAdmin` on the whole project, far more than they need; the fix is a per-step `service_account`. Gate and register run as the same identity, which also holds `aiplatform.user`, so the claim that a compromised step cannot register a model holds only for the training job itself, not for the pipeline steps.
 
 ### Task 3 — Scheduled retraining
-(three-strategy table for this system + chosen strategy + worst case)
+**Finding that shapes the answer.** `ingest` downloads one fixed content-addressed object (`DATA_KEY` in `scripts/pipeline_steps.py`) and training uses a fixed seed, so every run trains on identical data. Run 20261019153051 produced test ROC AUC 0.8533 against a registered incumbent of 0.8533, and the gate rejected it. Until ingest reads current data, any trigger retrains the same model.
+
+| Strategy | Right when | How it fails here |
+| --- | --- | --- |
+| Fixed schedule | Labelled data arrives steadily and the model ages with the calendar | With the current ingest, every scheduled run is paid for and rejected by the gate. Between runs, a shift in the inputs goes unnoticed until the next date. |
+| Data volume threshold | Labels arrive in batches and more data is what improves the model | Nothing in the pipeline counts new labelled rows. A large batch from one faulty machine type counts the same as a representative one, and a small but important shift never triggers. |
+| Drift-triggered | Inputs change between batches | `reports/drift.json` (Lab 4, apparently injected drift) flags `temp_c` at PSI 0.383, mean 79.58 to 85.58, with five features at exactly 0.0. Drift says the inputs moved, not that the model got worse, and it fires just as hard when upstream is broken as when the world changed. |
+
+**Chosen: a fixed monthly schedule** (`0 2 1 * *`; I have not verified the cron time zone on Vertex, probably UTC). It is the only trigger that needs no component the pipeline lacks, and it caps how often bad upstream data can cause a retrain at 12 a year. I replaced the weekly default because with a fixed dataset weekly runs only multiply the spend.
+
+**Worst case.** A drift trigger retrains the moment upstream breaks. The gate then compares the candidate's test AUC, computed on a split of the new data, with the incumbent's stored AUC from the old data (`latest_registered_metric` reads `metric_test` from the version description and does not re-score the incumbent on the new data). If the corruption is consistent across rows, for example a sensor calibration shifted for every record, the candidate can score well on its own split and pass, and a model that is wrong against reality gets registered within hours. A monthly schedule can do the same, but later, and the `validate` step (data contract, abort on failure) comes first in either case. I have not tested this scenario; it follows from reading the gate code.
 ### Task 4 — Portability test
 (audit result, second adapter demo, half-page write-up with honest verdict)
 ### Task 5 — Cost accounting
