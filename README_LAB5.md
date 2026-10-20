@@ -62,7 +62,7 @@ Consequences. Ingest and validate run with `storage.objectAdmin` on the whole pr
 
 **Cost of a full migration.** My estimate, not measured: roughly 15 to 20 engineering days for the Azure ML pipeline, registry, endpoints, monitoring and IAM equivalents, plus the managed LLM step and teardown.
 
-**Verdict.** Worth it only partly. The seam was real for storage, and the audit caught nothing because there was nothing to catch; but the things that make a migration expensive (pipelines, identities, registry semantics) sit below the adapter and the abstraction does not touch them. I would build it again for storage and invocation, and I would not claim it buys portability of the system.
+**Verdict.** Not worth it for this system. The seam held for storage and invocation: `src/` needed no changes and the audit passed. But the audit had nothing to catch, and the leaks that actually appeared (`BLOB_URI` still a `gs://` value, `AZURE_SCORING_URL` outside the eight capability slots, no way to read `model_version`) were in configuration and response shape, which a grep of `src/` cannot see. The work that makes a migration expensive (pipelines, identities, registry semantics, monitoring) sits below the adapter and the abstraction does not touch it, so a full migration would still cost roughly 15 to 20 engineering days (my estimate, not measured). The abstraction cost me adapter code, a second provider to keep working and a swap check to maintain, and in return it covered only a small part of that migration. For a course project with one provider in production, choosing GCP deliberately and accepting the lock-in would have been the cheaper and more honest decision.
 ### Task 5 — Cost accounting
 (see reports/lab5-cost.md)
 ### Task 6 — Teardown
