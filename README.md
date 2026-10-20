@@ -137,3 +137,34 @@ requires a conversation has failed the lab regardless of what the code does.
 
 That last check is not optional. A credential in Git history is an automatic deduction in this
 course, and rotating it is your responsibility, not the grader's.
+
+## Task 2: Least-privilege identities
+
+| Identity | Can do | Why it needs it |
+|---|---|---|
+| `itcs355-train` | Read and create objects in the project bucket (`objectViewer`, `objectCreator`); write logs and metrics; read Artifact Registry | Reads the dataset, writes `model.joblib` and `metrics.json` under a run-specific path, reports job logs and metrics |
+| `itcs355-serve` | Read objects in the project bucket (`objectViewer`); write logs and metrics; read Artifact Registry | Loads the model artifact at startup, emits endpoint logs and metrics. It cannot write data |
+| `github-deploy` (CI) | `aiplatform.user`, `artifactregistry.writer`, `storage.objectAdmin`, `monitoring.metricWriter`; `serviceAccountUser` on train and serve only | Pushes images, submits the pipeline, uploads models, deploys endpoints, and runs jobs as train/serve |
+
+Scope is enforced at the bucket level, not the project level, for train and serve.
+
+### Evidence: boundaries verified by impersonation (2026-10-19)
+
+| Identity | Action | Result |
+|---|---|---|
+| serve | write `serve.txt` | Denied: `storage.objects.create` |
+| train | write `train.txt` (first time) | Allowed |
+| train | overwrite `train.txt` | Denied: no `storage.objects.delete` |
+| serve | read `train.txt` | Allowed |
+
+Side effect worth noting: `objectCreator` makes artifacts write-once per path, so a trained model cannot be silently overwritten. Re-runs must use a run-specific path.
+
+### Known weak point
+
+`github-deploy` holds `storage.objectAdmin` on the whole project, the broadest grant in the table. I have not tested which pipeline steps actually need delete or overwrite, so I have not narrowed it.
+
+### Permission removal experiment
+
+- Removed: `roles/artifactregistry.reader` from `itcs355-serve`
+- Prediction before the test: deploy still succeeds, because the Vertex service agent, not `itcs355-serve`, pulls the serving image
+- What actually broke: nothing. Redeploying the test model to a Vertex endpoint with `itcs355-serve` lacking `artifactregistry.reader` completed successfully (audit log: DeployModel at 02:27 UTC, a second DeployModel entry at 02:46:14 UTC, then UndeployModel at 02:46:19 UTC; my script only undeploys when a deployed model exists on the endpoint, so the deploy took effect), so the grant was not needed for deploying. My hypothesis, not verified: the Vertex service agent pulls the image, not the serve identity. The permission was restored after the test.
