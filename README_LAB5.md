@@ -45,6 +45,12 @@ Consequences. Ingest and validate run with `storage.objectAdmin` on the whole pr
 **Chosen: a fixed monthly schedule** (`0 2 1 * *`; I have not verified the cron time zone on Vertex, probably UTC). It is the only trigger that needs no component the pipeline lacks, and it caps how often bad upstream data can cause a retrain at 12 a year. I replaced the weekly default because with a fixed dataset weekly runs only multiply the spend.
 
 **Worst case.** A drift trigger retrains the moment upstream breaks. The gate then compares the candidate's test AUC, computed on a split of the new data, with the incumbent's stored AUC from the old data (`latest_registered_metric` reads `metric_test` from the version description and does not re-score the incumbent on the new data). If the corruption is consistent across rows, for example a sensor calibration shifted for every record, the candidate can score well on its own split and pass, and a model that is wrong against reality gets registered within hours. A monthly schedule can do the same, but later, and the `validate` step (data contract, abort on failure) comes first in either case. I have not tested this scenario; it follows from reading the gate code.
+**Scheduled run, demonstrated.** I created a Vertex schedule with `create_schedule` (`max_run_count=1`, `service_account=github-deploy`) for a time five minutes ahead, then deleted it; `PipelineJobSchedule.list()` returned `[]` afterwards. The monthly cron `0 2 1 * *` in `pipeline.yaml` is the design, not a live schedule, so nothing is left to fire. Observations:
+- `CRON_TZ=UTC ...` was rejected as an invalid cron. A plain five-field cron was accepted and fired at exactly 03:57:00 UTC, so Vertex reads it as UTC. I did not try the `TZ=UTC` prefix.
+- The scheduled run (`itcs355-training-pipeline-20261019205700542`, named in US Pacific time) reported `github-deploy` as its service account, the same identity as my manual submits. My prediction that the scheduler might use a different identity did not hold here, so I did not see the "fails only when scheduled" failure.
+- All steps succeeded and `condition-1` was `NOT_TRIGGERED`, so the gate did not pass and nothing was registered or deployed. I did not read the gate log line for this run.
+- The run embeds `GIT_COMMIT=fa11b85` while the image was built from `2d4de32`, so lineage does not match the image even though the code inside it is unchanged.
+
 ### Task 4 — Portability test
 (audit result, second adapter demo, half-page write-up with honest verdict)
 ### Task 5 — Cost accounting
