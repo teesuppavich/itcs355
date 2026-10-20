@@ -59,6 +59,31 @@ class AzureAdapter(CloudAdapter):
     def push_image(self, local_tag: str) -> str:
         raise NotImplementedError("TODO Lab 1: az acr login, push, return registry/repo@sha256:...")
 
+    def invoke(self, endpoint: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Stand-in for an Azure ML online endpoint: POST positional instances to a scoring URL.
+
+        Same contract as the GCP adapter: a dict of named features in, a dict with
+        predictions / model_version / endpoint out.
+        """
+        import json
+        import os
+        import urllib.request
+
+        from src.data import FEATURES
+
+        url = endpoint if endpoint.startswith(("http://", "https://")) else os.environ.get("AZURE_SCORING_URL")
+        if not url:
+            raise RuntimeError("Azure invoke needs a scoring URL: pass one or set AZURE_SCORING_URL")
+        missing = [name for name in FEATURES if name not in payload]
+        if missing:
+            raise ValueError(f"Missing features: {missing}")
+        body = json.dumps({"instances": [[payload[name] for name in FEATURES]]}).encode()
+        req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            out = json.load(resp)
+        # /predict/instances returns no model version, unlike Vertex's deployed-model metadata.
+        return {"predictions": out["predictions"], "model_version": "unknown", "endpoint": url}
+
     # submit_training / register_model  -> Lab 2 (Azure ML command job + model registry)
     # deploy / invoke                   -> Lab 3 (managed online endpoint + deployment)
     # emit_metric                       -> Lab 4 (Azure Monitor custom metric)

@@ -52,7 +52,17 @@ Consequences. Ingest and validate run with `storage.objectAdmin` on the whole pr
 - The run embeds `GIT_COMMIT=fa11b85` while the image was built from `2d4de32`, so lineage does not match the image even though the code inside it is unchanged.
 
 ### Task 4 — Portability test
-(audit result, second adapter demo, half-page write-up with honest verdict)
+**Audit.** `make portability-audit` passed (exit 0): no provider strings in `src/`, `service/`, `monitoring/`, `tests/`.
+
+**Swap (GCP primary, Azure secondary), output in `reports/lab5-swap-check.txt`.** `upload` and `download` passed against a real Azure Blob Storage account (`BLOB_URI` pointed at it). `invoke` is a stand-in: it POSTs positional instances to a scoring URL, and I demonstrated it against the local FastAPI service (`/predict/instances`), not an Azure ML endpoint. The checker script's own `invoke` call fails, because it passes `project_id` as the endpoint and `{"rows": []}` as the payload; I did not edit the script.
+
+**Hardest method: `invoke`.** Upload and download map one-to-one onto blob calls. `invoke` has no portable shape: GCP resolves a display name to an endpoint and reads the model version from deployed-model metadata, while my Azure version needs a URL and cannot supply a version (`model_version: 'unknown'`).
+
+**Leaks that could not be hidden.** (1) Configuration: the checker swaps only `provider`, so `BLOB_URI` stayed a `gs://` value and I had to override it by hand. The audit cannot see this. (2) `invoke` needs `AZURE_SCORING_URL`, which is not one of the eight capability slots. (3) Azure for Students restricts regions by policy, which has no counterpart on the GCP side.
+
+**Cost of a full migration.** My estimate, not measured: roughly 15 to 20 engineering days for the Azure ML pipeline, registry, endpoints, monitoring and IAM equivalents, plus the managed LLM step and teardown.
+
+**Verdict.** Worth it only partly. The seam was real for storage, and the audit caught nothing because there was nothing to catch; but the things that make a migration expensive (pipelines, identities, registry semantics) sit below the adapter and the abstraction does not touch them. I would build it again for storage and invocation, and I would not claim it buys portability of the system.
 ### Task 5 — Cost accounting
 (see reports/lab5-cost.md)
 ### Task 6 — Teardown
