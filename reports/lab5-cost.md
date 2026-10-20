@@ -17,7 +17,7 @@ Project filter: one project, no label filter. Net charge after free-trial credit
 Endpoint: deployed 16 Oct 09:09 UTC, undeployed 18 Oct 15:35 UTC, about 54.4 h.
 Formula estimate at 6.4 THB/h, 1 replica, 54.43 h: 348.35 THB. Billed: 341.61 THB
 (core 222.42 + RAM 119.19). Billed hours: 213.96 core-h / 4 = 53.49 h and 855.85 GiB-h / 16 = 53.49 h.
-The estimate assumed 4 h. The endpoint was left up about 54 h. Cause: TODO (your own words).
+The estimate assumed 4 h. The endpoint was left up about 54 h. Cause: <เขียนสาเหตุของคุณที่นี่>
 
 ## 2. Cost per 1,000 predictions (e2-standard-4, 6.4 THB/h)
 
