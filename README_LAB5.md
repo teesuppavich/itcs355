@@ -66,7 +66,19 @@ Consequences. Ingest and validate run with `storage.objectAdmin` on the whole pr
 ### Task 5 — Cost accounting
 (see reports/lab5-cost.md)
 ### Task 6 — Teardown
-(screenshot of empty resource list + re-check after 24h)
+`make teardown` deleted the Lab 5 endpoint. I then removed the empty Lab 3 endpoint by hand so the console list is empty, and checked by hand that nothing is left.
+
+GCP, Vertex AI Endpoints, asia-southeast1, project itcs355-6688097:
+
+![GCP endpoints empty](reports/screenshots/lab5-gcp-endpoints-empty.png)
+
+Azure, Resource groups, subscription Azure for Students:
+
+![Azure resource groups empty](reports/screenshots/lab5-azure-rg-empty.png)
+
+Also checked from the CLI: no pipeline schedules, no running or pending pipeline jobs, and no Cloud Scheduler jobs. The Compute Engine API was never enabled in this project, so there are no VMs.
+
+Re-check after 24h: (paste `make cost-report` output here)
 
 ## Part B — Operating an LLM step
 ### Task 7 — Evaluation gate
