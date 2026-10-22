@@ -76,9 +76,9 @@ Azure, Resource groups, subscription Azure for Students:
 
 ![Azure resource groups empty](reports/screenshots/lab5-azure-rg-empty.png)
 
-Also checked from the CLI: no pipeline schedules, no running or pending pipeline jobs, and no Cloud Scheduler jobs. The Compute Engine API was never enabled in this project, so there are no VMs.
+Also checked from the CLI: no pipeline schedules, no running or pending pipeline jobs, and no Cloud Scheduler jobs. The Compute Engine API is not enabled in this project (checked with `gcloud services list`), so there are no VMs.
 
-Re-check after 24h: (paste `make cost-report` output here)
+Re-check after 24h (Cloud Billing > Reports, list cost with savings and credits off, all products, checked 22 Oct 2026): the day after teardown, 21 Oct 2026, cost 0.08 THB, all of it Artifact Registry storage. No Vertex AI endpoint or Compute Engine charge appeared on that day. Cumulative list cost for 16 to 21 Oct was 353.03 THB (`make cost-report EST=64.2 ACT=353.03 RPS=13.046`), still dominated by the endpoint left up for about 54 h before teardown, as explained in reports/lab5-cost.md.
 
 ## Part B — Operating an LLM step
 ### Task 7 — Evaluation gate
