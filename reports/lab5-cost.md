@@ -14,10 +14,10 @@ Billing source: Cloud Billing > Reports, label `course=itcs355`, from 16 Oct 202
 Credits not removed (list cost shown). Fetched on: 20 Oct 2026. Currency: THB, no FX needed.
 Project filter: one project, no label filter. Net charge after free-trial credit: 0.00 THB.
 
-Endpoint: deployed 16 Oct 09:09 UTC, undeployed 18 Oct 15:35 UTC, about 54.4 h.
+Endpoint: deployed 16 Oct 09:09 UTC, undeployed 18 Oct 15:24 UTC (Cloud Audit Logs), about 54.3 h.
 Formula estimate at 6.4 THB/h, 1 replica, 54.43 h: 348.35 THB. Billed: 341.61 THB
 (core 222.42 + RAM 119.19). Billed hours: 213.96 core-h / 4 = 53.49 h and 855.85 GiB-h / 16 = 53.49 h.
-The estimate assumed 4 h. The endpoint was left up about 54 h. Cause: I left the endpoint deployed after testing and had no reminder or automatic teardown, so it ran until I undeployed it manually on 18 Oct at about 15:35 UTC. Fix: add an undeploy step at the end of the test workflow and set a budget alert.
+The estimate assumed 4 h. The endpoint was left up about 54 h. Cause: I left the endpoint deployed after testing and had no reminder or automatic teardown, so it ran until I undeployed it manually on 18 Oct at about 15:24 UTC. Fix: add an undeploy step at the end of the test workflow and set a budget alert.
 
 ## 2. Cost per 1,000 predictions (e2-standard-4, 6.4 THB/h)
 
