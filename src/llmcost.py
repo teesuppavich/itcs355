@@ -42,6 +42,7 @@ TOKEN_PRICE_TABLE: dict[str, dict[str, tuple[float, float]]] = {
     },
     "gcp": {
         "small": (8.5, 34.0),
+        "gemini-2.5-flash": (10.0500, 83.7500),
         "medium": (105.0, 525.0),
         "large": (525.0, 2625.0),
     },

@@ -17,6 +17,31 @@ class GcpAdapter(CloudAdapter):
         prefix = parsed.path.lstrip("/")
         return bucket, prefix
 
+    def _env(self, name: str):
+        import os
+
+        return os.environ.get(name) or None
+
+    def _lab(self, default: int) -> int:
+        return int(self._env("COURSE_LAB") or default)
+
+    def latest_registered_metric(self, name: str, metric_key: str):
+        from google.cloud import aiplatform
+
+        aiplatform.init(project=self.cfg.project_id, location=self.cfg.region)
+        found = aiplatform.Model.list(filter=f'display_name="{name}"')
+        if not found:
+            return None
+        registry = aiplatform.models.ModelRegistry(model=found[0].name)
+        newest = max(registry.list_versions(), key=lambda v: int(v.version_id))
+        for line in (newest.version_description or "").splitlines():
+            key, _, value = line.partition("=")
+            if key.strip() == metric_key:
+                return float(value)
+        raise LookupError(
+            f"version {newest.version_id} of {name} has no {metric_key} in its description"
+        )
+
     def upload(self, local_path: str, key: str) -> str:
         from google.cloud import storage
 
@@ -91,11 +116,12 @@ class GcpAdapter(CloudAdapter):
                 },
             }],
             base_output_dir=f"{self.cfg.blob_uri}/vertex-jobs",
-            labels=self.cfg.tags(2),
+            labels=self.cfg.tags(self._lab(2)),
         )
 
         job.submit(
-            scheduling_strategy=aiplatform.compat.types.custom_job.Scheduling.Strategy.SPOT
+            service_account=self._env("TRAIN_SERVICE_ACCOUNT"),
+            scheduling_strategy=aiplatform.compat.types.custom_job.Scheduling.Strategy.SPOT,
         )
 
         return job.resource_name
@@ -187,8 +213,15 @@ class GcpAdapter(CloudAdapter):
             staging_bucket=self.cfg.blob_uri,
         )
 
+        existing = aiplatform.Model.list(
+            filter=f'display_name="{name}"',
+            project=self.cfg.project_id,
+            location=self.cfg.region,
+        )
         model = aiplatform.Model.upload(
             display_name=name,
+            parent_model=existing[0].resource_name if existing else None,
+            version_description=lineage,
             artifact_uri=model_uri,
             serving_container_image_uri=(
                 "us-docker.pkg.dev/vertex-ai/"
@@ -196,7 +229,7 @@ class GcpAdapter(CloudAdapter):
             ),
             version_aliases=["staging"],
             description=lineage,
-            labels=self.cfg.tags(2),
+            labels=self.cfg.tags(self._lab(2)),
             project=self.cfg.project_id,
             location=self.cfg.region,
             staging_bucket=self.cfg.blob_uri,
@@ -209,6 +242,15 @@ class GcpAdapter(CloudAdapter):
 
         return str(model.version_id)
     # deploy / invoke                   -> Lab 3 (Vertex Endpoint)
+
+    def model_ref(self, name: str, version: str) -> str:
+        from google.cloud import aiplatform
+
+        aiplatform.init(project=self.cfg.project_id, location=self.cfg.region)
+        found = aiplatform.Model.list(filter=f'display_name="{name}"')
+        if len(found) != 1:
+            raise LookupError(f"expected exactly one model named {name}, found {len(found)}")
+        return f"{found[0].name}@{version}"
 
     def deploy(self, model_ref: str, endpoint: str, instance: str) -> str:
         """Create a Lab 3 serving model and deploy it to a Vertex endpoint."""
@@ -246,7 +288,7 @@ class GcpAdapter(CloudAdapter):
             serving_container_environment_variables={"MODEL_VERSION": str(model_ref)},
             serving_container_predict_route="/predict/instances",
             serving_container_health_route="/ready",
-            labels=self.cfg.tags(3),
+            labels=self.cfg.tags(self._lab(3)),
             project=self.cfg.project_id,
             location=self.cfg.region,
             staging_bucket=self.cfg.blob_uri,
@@ -269,7 +311,7 @@ class GcpAdapter(CloudAdapter):
         else:
             ep = aiplatform.Endpoint.create(
                 display_name=endpoint,
-                labels=self.cfg.tags(3),
+                labels=self.cfg.tags(self._lab(3)),
                 project=self.cfg.project_id,
                 location=self.cfg.region,
                 sync=True,
@@ -281,6 +323,7 @@ class GcpAdapter(CloudAdapter):
             deployed_model_display_name=f"{endpoint}-model",
             traffic_percentage=100,
             machine_type=instance,
+            service_account=self._env("SERVE_SERVICE_ACCOUNT"),
             min_replica_count=1,
             max_replica_count=1,
             sync=True,
@@ -341,7 +384,8 @@ class GcpAdapter(CloudAdapter):
         aiplatform.init(project=self.cfg.project_id, location=self.cfg.region)
         deleted=[]
         for ep in aiplatform.Endpoint.list(project=self.cfg.project_id, location=self.cfg.region):
-            if ep.display_name != "itcs355-lab3-endpoint":
+            labels = dict(ep.labels or {})
+            if any(labels.get(k) != v for k, v in tags.items()):
                 continue
             for dm in list(ep.gca_resource.deployed_models):
                 ep.undeploy(deployed_model_id=str(dm.id), sync=True)
@@ -379,5 +423,37 @@ class GcpAdapter(CloudAdapter):
         client = monitoring_v3.MetricServiceClient()
         client.create_time_series(name=f"projects/{self.cfg.project_id}", time_series=[series])
 
-    # generate                          -> Lab 5 (managed LLM endpoint; read usageMetadata for tokens)
+    def generate(self, prompt: str, params: dict[str, Any]) -> dict[str, Any]:
+        import time
+
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client(
+            vertexai=True,
+            project=self.cfg.project_id,
+            location=params.get("location", self.cfg.region),
+        )
+        config = types.GenerateContentConfig(
+            system_instruction=params.get("system"),
+            max_output_tokens=params.get("max_output_tokens", 200),
+            temperature=params.get("temperature", 0.0),
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
+            response_mime_type=params.get("response_mime_type", "application/json"),
+        )
+        start = time.perf_counter()
+        resp = client.models.generate_content(
+            model=params.get("model", "gemini-2.5-flash"),
+            contents=prompt,
+            config=config,
+        )
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        usage = resp.usage_metadata
+        return {
+            "response": resp.text or "",
+            "input_tokens": int(usage.prompt_token_count or 0),
+            "output_tokens": int(usage.candidates_token_count or 0),
+            "latency_ms": latency_ms,
+        }
+
     # teardown                          -> Lab 5 (filter resources by label)
